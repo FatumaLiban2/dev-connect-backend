@@ -118,7 +118,7 @@ class WebSocketMessagingIntegrationTest {
                         "WebSocket test message",
                         "sent",
                         null,
-                        null
+                        null // No projectId in new model
                 );
                 session.send("/app/chat.sendMessage", messageDTO);
             }

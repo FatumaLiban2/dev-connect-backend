@@ -1,10 +1,8 @@
 package org.devconnect.devconnectbackend.service;
 
 import org.devconnect.devconnectbackend.dto.MessageDTO;
-import org.devconnect.devconnectbackend.model.Chat;
+import org.devconnect.devconnectbackend.model.Conversation;
 import org.devconnect.devconnectbackend.model.Message;
-import org.devconnect.devconnectbackend.model.User;
-import org.devconnect.devconnectbackend.repository.ChatRepository;
 import org.devconnect.devconnectbackend.repository.MessageRepository;
 import org.devconnect.devconnectbackend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +21,7 @@ public class MessageService {
     private MessageRepository messageRepository;
     
     @Autowired
-    private ChatRepository chatRepository;
+    private ConversationService conversationService;
     
     @Autowired
     private UserRepository userRepository;
@@ -35,35 +33,26 @@ public class MessageService {
      * Send a message from one user to another
      */
     @Transactional
-    public MessageDTO sendMessage(Long senderId, Long receiverId, String content, Long projectId) {
-        User sender = userRepository.findById(senderId)
+    public MessageDTO sendMessage(Long senderId, Long receiverId, String content) {
+        // Validate users exist
+        userRepository.findById(senderId)
                 .orElseThrow(() -> new RuntimeException("Sender not found"));
-        User receiver = userRepository.findById(receiverId)
+        userRepository.findById(receiverId)
                 .orElseThrow(() -> new RuntimeException("Receiver not found"));
         
+        // Get or create conversation
+        Conversation conversation = conversationService.getOrCreateConversation(senderId, receiverId);
+        
         // Create and save message
-        Message message = new Message(sender, receiver, content, projectId);
+        Message message = new Message(conversation.getId(), senderId, content);
         message.setStatus(Message.MessageStatus.SENT);
         message = messageRepository.save(message);
         
-        // Update or create chat
-        Chat chat = chatRepository.findChatBetweenUsersAnyProject(senderId, receiverId)
-                .orElseGet(() -> new Chat(sender, receiver, projectId));
-        
-        chat.setLastMessage(content);
-        chat.setLastMessageTime(message.getTimestamp());
-        
-        // Update unread count for receiver
-        if (chat.getUser1().getId().equals(receiverId)) {
-            chat.setUnreadCountUser1(chat.getUnreadCountUser1() + 1);
-        } else {
-            chat.setUnreadCountUser2(chat.getUnreadCountUser2() + 1);
-        }
-        
-        chatRepository.save(chat);
+        // Update conversation metadata
+        conversationService.updateConversationAfterMessage(conversation.getId(), senderId, content);
         
         // Convert to DTO and send via WebSocket
-        MessageDTO messageDTO = convertToDTO(message);
+        MessageDTO messageDTO = convertToDTO(message, receiverId);
         messagingTemplate.convertAndSendToUser(
                 receiverId.toString(),
                 "/queue/messages",
@@ -74,73 +63,81 @@ public class MessageService {
     }
     
     /**
-     * Get all messages between two users
+     * Get all messages in a conversation
      */
-    public List<MessageDTO> getMessagesBetweenUsers(Long userId1, Long userId2) {
-        List<Message> messages = messageRepository.findMessagesBetweenUsers(userId1, userId2);
+    public List<MessageDTO> getMessagesInConversation(Long conversationId, Long requestingUserId) {
+        // Verify user is a participant
+        Conversation conversation = conversationService.getConversation(conversationId, requestingUserId);
+        
+        List<Message> messages = messageRepository.findByConversationIdOrderByTimestampAsc(conversationId);
         List<MessageDTO> messageDTOs = new ArrayList<>();
         
+        Long otherUserId = conversation.getOtherParticipantId(requestingUserId);
+        
         for (Message message : messages) {
-            messageDTOs.add(convertToDTO(message));
+            // Determine receiverId for DTO (opposite of sender)
+            Long receiverId = message.getSenderId().equals(requestingUserId) ? otherUserId : requestingUserId;
+            messageDTOs.add(convertToDTO(message, receiverId));
         }
         
         return messageDTOs;
     }
     
     /**
-     * Mark messages as read
+     * Get messages between two users (creates conversation if needed)
+     */
+    public List<MessageDTO> getMessagesBetweenUsers(Long userId1, Long userId2) {
+        Conversation conversation = conversationService.getOrCreateConversation(userId1, userId2);
+        return getMessagesInConversation(conversation.getId(), userId1);
+    }
+    
+    /**
+     * Mark messages as read in a conversation
      */
     @Transactional
-    public void markMessagesAsRead(Long senderId, Long receiverId) {
-        List<Message> messages = messageRepository.findMessagesBetweenUsers(senderId, receiverId);
+    public void markMessagesAsRead(Long conversationId, Long senderId, Long receiverId) {
+        List<Message> unreadMessages = messageRepository.findUnreadMessagesBySender(conversationId, senderId);
         
-        for (Message message : messages) {
-            if (message.getReceiver().getId().equals(receiverId) && 
-                message.getStatus() != Message.MessageStatus.READ) {
-                message.setStatus(Message.MessageStatus.READ);
-                message.setReadAt(LocalDateTime.now());
-                messageRepository.save(message);
-                
-                // Notify sender about read receipt
-                MessageDTO messageDTO = convertToDTO(message);
-                messagingTemplate.convertAndSendToUser(
-                        senderId.toString(),
-                        "/queue/read-receipts",
-                        messageDTO
-                );
-            }
+        for (Message message : unreadMessages) {
+            message.setStatus(Message.MessageStatus.READ);
+            message.setReadAt(LocalDateTime.now());
+            messageRepository.save(message);
+            
+            // Notify sender about read receipt
+            MessageDTO messageDTO = convertToDTO(message, receiverId);
+            messagingTemplate.convertAndSendToUser(
+                    senderId.toString(),
+                    "/queue/read-receipts",
+                    messageDTO
+            );
         }
         
-        // Update unread count in chat
-        Chat chat = chatRepository.findChatBetweenUsersAnyProject(senderId, receiverId)
-                .orElse(null);
-        
-        if (chat != null) {
-            if (chat.getUser1().getId().equals(receiverId)) {
-                chat.setUnreadCountUser1(0);
-            } else {
-                chat.setUnreadCountUser2(0);
-            }
-            chatRepository.save(chat);
-        }
+        // Update conversation unread count
+        conversationService.markConversationAsRead(conversationId, receiverId);
     }
     
     /**
      * Mark message as delivered
      */
     @Transactional
-    public void markMessageAsDelivered(Long messageId, Long receiverId) {
+    public void markMessageAsDelivered(Long messageId) {
         Message message = messageRepository.findById(messageId)
                 .orElseThrow(() -> new RuntimeException("Message not found"));
         
-        if (message.getReceiver().getId().equals(receiverId)) {
+        if (message.getStatus() == Message.MessageStatus.SENT) {
             message.setStatus(Message.MessageStatus.DELIVERED);
             messageRepository.save(message);
             
             // Notify sender about delivery
-            MessageDTO messageDTO = convertToDTO(message);
+            Conversation conversation = conversationService.getConversation(
+                message.getConversationId(), 
+                message.getSenderId()
+            );
+            Long receiverId = conversation.getOtherParticipantId(message.getSenderId());
+            
+            MessageDTO messageDTO = convertToDTO(message, receiverId);
             messagingTemplate.convertAndSendToUser(
-                    message.getSender().getId().toString(),
+                    message.getSenderId().toString(),
                     "/queue/delivery-receipts",
                     messageDTO
             );
@@ -150,15 +147,15 @@ public class MessageService {
     /**
      * Convert Message entity to DTO
      */
-    private MessageDTO convertToDTO(Message message) {
+    private MessageDTO convertToDTO(Message message, Long receiverId) {
         return new MessageDTO(
                 message.getId(),
-                message.getSender().getId(),
-                message.getReceiver().getId(),
+                message.getSenderId(),
+                receiverId,
                 message.getContent(),
                 message.getStatus().name().toLowerCase(),
                 message.getTimestamp(),
-                message.getProjectId()
+                null // No projectId in new model
         );
     }
 }

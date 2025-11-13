@@ -3,7 +3,7 @@ package org.devconnect.devconnectbackend.controller;
 import org.devconnect.devconnectbackend.dto.ChatDTO;
 import org.devconnect.devconnectbackend.dto.MessageDTO;
 import org.devconnect.devconnectbackend.model.User;
-import org.devconnect.devconnectbackend.service.ChatService;
+import org.devconnect.devconnectbackend.service.ConversationService;
 import org.devconnect.devconnectbackend.service.MessageService;
 import org.devconnect.devconnectbackend.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,19 +22,19 @@ public class MessageController {
     private MessageService messageService;
     
     @Autowired
-    private ChatService chatService;
+    private ConversationService conversationService;
     
     @Autowired
     private UserService userService;
     
     /**
-     * Get all chats for a user
+     * Get all conversations for a user
      * GET /api/messages/chats/{userId}
      */
     @GetMapping("/chats/{userId}")
     public ResponseEntity<List<ChatDTO>> getUserChats(@PathVariable Long userId) {
         try {
-            List<ChatDTO> chats = chatService.getChatsByUserId(userId);
+            List<ChatDTO> chats = conversationService.getConversationsForUser(userId);
             return ResponseEntity.ok(chats);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
@@ -58,6 +58,22 @@ public class MessageController {
     }
     
     /**
+     * Get messages in a specific conversation
+     * GET /api/messages/conversation/{conversationId}?userId={userId}
+     */
+    @GetMapping("/conversation/{conversationId}")
+    public ResponseEntity<List<MessageDTO>> getConversationMessages(
+            @PathVariable Long conversationId,
+            @RequestParam Long userId) {
+        try {
+            List<MessageDTO> messages = messageService.getMessagesInConversation(conversationId, userId);
+            return ResponseEntity.ok(messages);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    /**
      * Send a message (REST endpoint alternative to WebSocket)
      * POST /api/messages/send
      */
@@ -67,8 +83,7 @@ public class MessageController {
             MessageDTO sentMessage = messageService.sendMessage(
                     messageDTO.getSenderId(),
                     messageDTO.getReceiverId(),
-                    messageDTO.getText(),
-                    messageDTO.getProjectId()
+                    messageDTO.getText()
             );
             return ResponseEntity.ok(sentMessage);
         } catch (Exception e) {
@@ -78,14 +93,15 @@ public class MessageController {
     
     /**
      * Mark messages as read
-     * PUT /api/messages/read
+     * PUT /api/messages/read?conversationId={id}&senderId={senderId}&receiverId={receiverId}
      */
     @PutMapping("/read")
     public ResponseEntity<Map<String, String>> markAsRead(
+            @RequestParam Long conversationId,
             @RequestParam Long senderId,
             @RequestParam Long receiverId) {
         try {
-            messageService.markMessagesAsRead(senderId, receiverId);
+            messageService.markMessagesAsRead(conversationId, senderId, receiverId);
             Map<String, String> response = new HashMap<>();
             response.put("message", "Messages marked as read");
             return ResponseEntity.ok(response);

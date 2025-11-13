@@ -4,20 +4,22 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "messages")
+@Table(name = "messages",
+        indexes = {
+                @Index(name = "idx_messages_conversation_time", columnList = "conversation_id, timestamp DESC"),
+                @Index(name = "idx_messages_sender", columnList = "sender_id")
+        })
 public class Message {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "sender_id", nullable = false)
-    private User sender;
+    @Column(name = "conversation_id", nullable = false)
+    private Long conversationId;
     
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "receiver_id", nullable = false)
-    private User receiver;
+    @Column(name = "sender_id", nullable = false)
+    private Long senderId;
     
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
@@ -32,18 +34,15 @@ public class Message {
     @Column(name = "read_at")
     private LocalDateTime readAt;
     
-    @Column(name = "project_id")
-    private Long projectId;
-    
     // Constructors
     public Message() {}
     
-    public Message(User sender, User receiver, String content, Long projectId) {
-        this.sender = sender;
-        this.receiver = receiver;
+    public Message(Long conversationId, Long senderId, String content) {
+        this.conversationId = conversationId;
+        this.senderId = senderId;
         this.content = content;
-        this.projectId = projectId;
         this.timestamp = LocalDateTime.now();
+        this.status = MessageStatus.SENT;
     }
     
     // Getters and Setters
@@ -55,20 +54,20 @@ public class Message {
         this.id = id;
     }
     
-    public User getSender() {
-        return sender;
+    public Long getConversationId() {
+        return conversationId;
     }
     
-    public void setSender(User sender) {
-        this.sender = sender;
+    public void setConversationId(Long conversationId) {
+        this.conversationId = conversationId;
     }
     
-    public User getReceiver() {
-        return receiver;
+    public Long getSenderId() {
+        return senderId;
     }
     
-    public void setReceiver(User receiver) {
-        this.receiver = receiver;
+    public void setSenderId(Long senderId) {
+        this.senderId = senderId;
     }
     
     public String getContent() {
@@ -103,17 +102,10 @@ public class Message {
         this.readAt = readAt;
     }
     
-    public Long getProjectId() {
-        return projectId;
-    }
-    
-    public void setProjectId(Long projectId) {
-        this.projectId = projectId;
-    }
-    
     public enum MessageStatus {
         SENT,
         DELIVERED,
         READ
     }
 }
+

@@ -2,6 +2,8 @@ package org.devconnect.devconnectbackend.controller;
 
 import org.devconnect.devconnectbackend.dto.MessageDTO;
 import org.devconnect.devconnectbackend.dto.TypingIndicatorDTO;
+import org.devconnect.devconnectbackend.model.Conversation;
+import org.devconnect.devconnectbackend.service.ConversationService;
 import org.devconnect.devconnectbackend.service.MessageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -16,6 +18,9 @@ public class WebSocketController {
     private MessageService messageService;
     
     @Autowired
+    private ConversationService conversationService;
+    
+    @Autowired
     private SimpMessagingTemplate messagingTemplate;
     
     /**
@@ -25,12 +30,11 @@ public class WebSocketController {
     @MessageMapping("/chat")
     public void handleMessage(@Payload MessageDTO messageDTO) {
         try {
-            // Process and send message
+            // Process and send message (without projectId)
             MessageDTO savedMessage = messageService.sendMessage(
                     messageDTO.getSenderId(),
                     messageDTO.getReceiverId(),
-                    messageDTO.getText(),
-                    messageDTO.getProjectId()
+                    messageDTO.getText()
             );
             
             // Send message to receiver
@@ -71,15 +75,30 @@ public class WebSocketController {
      */
     @MessageMapping("/message-delivered")
     public void handleMessageDelivered(@Payload MessageDTO messageDTO) {
-        messageService.markMessageAsDelivered(messageDTO.getId(), messageDTO.getReceiverId());
+        messageService.markMessageAsDelivered(messageDTO.getId());
     }
     
     /**
      * Handle message read confirmation
      * Endpoint: /app/messages-read
+     * Expects: { "senderId": ..., "receiverId": ... }
      */
     @MessageMapping("/messages-read")
     public void handleMessagesRead(@Payload MessageDTO messageDTO) {
-        messageService.markMessagesAsRead(messageDTO.getSenderId(), messageDTO.getReceiverId());
+        try {
+            // Get or create conversation to get conversation ID
+            Conversation conversation = conversationService.getOrCreateConversation(
+                messageDTO.getSenderId(), 
+                messageDTO.getReceiverId()
+            );
+            
+            messageService.markMessagesAsRead(
+                conversation.getId(),
+                messageDTO.getSenderId(), 
+                messageDTO.getReceiverId()
+            );
+        } catch (Exception e) {
+            System.err.println("Error marking messages as read: " + e.getMessage());
+        }
     }
 }

@@ -1,10 +1,10 @@
 package org.devconnect.devconnectbackend.service;
 
 import org.devconnect.devconnectbackend.dto.MessageDTO;
-import org.devconnect.devconnectbackend.model.Chat;
+import org.devconnect.devconnectbackend.model.Conversation;
 import org.devconnect.devconnectbackend.model.Message;
 import org.devconnect.devconnectbackend.model.User;
-import org.devconnect.devconnectbackend.repository.ChatRepository;
+import org.devconnect.devconnectbackend.repository.ConversationRepository;
 import org.devconnect.devconnectbackend.repository.MessageRepository;
 import org.devconnect.devconnectbackend.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +31,10 @@ class MessageServiceTest {
     private MessageRepository messageRepository;
 
     @Mock
-    private ChatRepository chatRepository;
+    private ConversationRepository conversationRepository;
+
+    @Mock
+    private ConversationService conversationService;
 
     @Mock
     private UserRepository userRepository;
@@ -42,33 +45,33 @@ class MessageServiceTest {
     @InjectMocks
     private MessageService messageService;
 
+    private Message testMessage;
+    private Conversation testConversation;
     private User sender;
     private User receiver;
-    private Message testMessage;
-    private Chat testChat;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
 
         // Create test users
-        sender = new User("johndoe", "john@example.com", "password123", User.UserRole.CLIENT);
+        sender = new User("sender", "sender@test.com", "password", User.UserRole.CLIENT);
         sender.setId(1L);
-
-        receiver = new User("janedoe", "jane@example.com", "password456", User.UserRole.DEVELOPER);
+        
+        receiver = new User("receiver", "receiver@test.com", "password", User.UserRole.DEVELOPER);
         receiver.setId(2L);
 
+        // Create test conversation (user 1 and user 2)
+        testConversation = new Conversation(1L, 2L);
+        testConversation.setId(1L);
+        testConversation.setUnreadCountA(0);
+        testConversation.setUnreadCountB(0);
+
         // Create test message
-        testMessage = new Message(sender, receiver, "Hello Jane!", 101L);
+        testMessage = new Message(1L, 1L, "Hello Jane!");
         testMessage.setId(1L);
         testMessage.setStatus(Message.MessageStatus.SENT);
         testMessage.setTimestamp(LocalDateTime.now());
-
-        // Create test chat
-        testChat = new Chat(sender, receiver, 101L);
-        testChat.setId(1L);
-        testChat.setUnreadCountUser1(0);
-        testChat.setUnreadCountUser2(0);
     }
 
     @Test
@@ -77,13 +80,12 @@ class MessageServiceTest {
         // Arrange
         when(userRepository.findById(1L)).thenReturn(Optional.of(sender));
         when(userRepository.findById(2L)).thenReturn(Optional.of(receiver));
+        when(conversationService.getOrCreateConversation(1L, 2L)).thenReturn(testConversation);
         when(messageRepository.save(any(Message.class))).thenReturn(testMessage);
-        when(chatRepository.findChatBetweenUsersAnyProject(1L, 2L))
-                .thenReturn(Optional.of(testChat));
-        when(chatRepository.save(any(Chat.class))).thenReturn(testChat);
+        doNothing().when(conversationService).updateConversationAfterMessage(anyLong(), anyLong(), anyString());
 
         // Act
-        MessageDTO result = messageService.sendMessage(1L, 2L, "Hello Jane!", 101L);
+        MessageDTO result = messageService.sendMessage(1L, 2L, "Hello Jane!");
 
         // Assert
         assertNotNull(result);
@@ -93,52 +95,56 @@ class MessageServiceTest {
         assertEquals("Hello Jane!", result.getText());
         assertEquals("sent", result.getStatus());
 
+        verify(userRepository, times(1)).findById(1L);
+        verify(userRepository, times(1)).findById(2L);
+        verify(conversationService, times(1)).getOrCreateConversation(1L, 2L);
         verify(messageRepository, times(1)).save(any(Message.class));
-        verify(chatRepository, times(1)).save(any(Chat.class));
+        verify(conversationService, times(1)).updateConversationAfterMessage(eq(1L), eq(1L), eq("Hello Jane!"));
         verify(messagingTemplate, times(1))
                 .convertAndSendToUser(eq("2"), eq("/queue/messages"), any(MessageDTO.class));
     }
 
     @Test
-    @DisplayName("Should throw exception when sender not found")
-    void testSendMessageSenderNotFound() {
+    @DisplayName("Should get messages in conversation")
+    void testGetMessagesInConversation() {
         // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.empty());
+        Message message2 = new Message(1L, 2L, "Hi John!");
+        message2.setId(2L);
+        message2.setStatus(Message.MessageStatus.SENT);
+        message2.setTimestamp(LocalDateTime.now().plusMinutes(1));
 
-        // Act & Assert
-        assertThrows(RuntimeException.class, () -> {
-            messageService.sendMessage(1L, 2L, "Hello!", 101L);
-        });
+        List<Message> messages = Arrays.asList(testMessage, message2);
+        
+        when(conversationService.getConversation(1L, 1L)).thenReturn(testConversation);
+        when(messageRepository.findByConversationIdOrderByTimestampAsc(1L)).thenReturn(messages);
 
-        verify(messageRepository, never()).save(any(Message.class));
-    }
+        // Act
+        List<MessageDTO> result = messageService.getMessagesInConversation(1L, 1L);
 
-    @Test
-    @DisplayName("Should throw exception when receiver not found")
-    void testSendMessageReceiverNotFound() {
-        // Arrange
-        when(userRepository.findById(1L)).thenReturn(Optional.of(sender));
-        when(userRepository.findById(2L)).thenReturn(Optional.empty());
+        // Assert
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertEquals(1L, result.get(0).getId());
+        assertEquals(2L, result.get(1).getId());
 
-        // Act & Assert
-        assertThrows(RuntimeException.class, () -> {
-            messageService.sendMessage(1L, 2L, "Hello!", 101L);
-        });
-
-        verify(messageRepository, never()).save(any(Message.class));
+        verify(conversationService, times(1)).getConversation(1L, 1L);
+        verify(messageRepository, times(1)).findByConversationIdOrderByTimestampAsc(1L);
     }
 
     @Test
     @DisplayName("Should get messages between users")
     void testGetMessagesBetweenUsers() {
         // Arrange
-        Message message2 = new Message(receiver, sender, "Hi John!", 101L);
+        Message message2 = new Message(1L, 2L, "Hi John!");
         message2.setId(2L);
         message2.setStatus(Message.MessageStatus.SENT);
         message2.setTimestamp(LocalDateTime.now().plusMinutes(1));
 
         List<Message> messages = Arrays.asList(testMessage, message2);
-        when(messageRepository.findMessagesBetweenUsers(1L, 2L)).thenReturn(messages);
+        
+        when(conversationService.getOrCreateConversation(1L, 2L)).thenReturn(testConversation);
+        when(conversationService.getConversation(1L, 1L)).thenReturn(testConversation);
+        when(messageRepository.findByConversationIdOrderByTimestampAsc(1L)).thenReturn(messages);
 
         // Act
         List<MessageDTO> result = messageService.getMessagesBetweenUsers(1L, 2L);
@@ -149,7 +155,8 @@ class MessageServiceTest {
         assertEquals(1L, result.get(0).getId());
         assertEquals(2L, result.get(1).getId());
 
-        verify(messageRepository, times(1)).findMessagesBetweenUsers(1L, 2L);
+        verify(conversationService, times(1)).getOrCreateConversation(1L, 2L);
+        verify(messageRepository, times(1)).findByConversationIdOrderByTimestampAsc(1L);
     }
 
     @Test
@@ -159,20 +166,18 @@ class MessageServiceTest {
         testMessage.setStatus(Message.MessageStatus.SENT);
         List<Message> messages = Arrays.asList(testMessage);
         
-        when(messageRepository.findMessagesBetweenUsers(1L, 2L)).thenReturn(messages);
+        when(messageRepository.findUnreadMessagesBySender(1L, 1L)).thenReturn(messages);
         when(messageRepository.save(any(Message.class))).thenReturn(testMessage);
-        when(chatRepository.findChatBetweenUsersAnyProject(1L, 2L))
-                .thenReturn(Optional.of(testChat));
-        when(chatRepository.save(any(Chat.class))).thenReturn(testChat);
+        doNothing().when(conversationService).markConversationAsRead(anyLong(), anyLong());
 
         // Act
-        messageService.markMessagesAsRead(1L, 2L);
+        messageService.markMessagesAsRead(1L, 1L, 2L);
 
         // Assert
         verify(messageRepository, times(1)).save(any(Message.class));
         verify(messagingTemplate, times(1))
                 .convertAndSendToUser(eq("1"), eq("/queue/read-receipts"), any(MessageDTO.class));
-        verify(chatRepository, times(1)).save(any(Chat.class));
+        verify(conversationService, times(1)).markConversationAsRead(1L, 2L);
     }
 
     @Test
@@ -182,9 +187,10 @@ class MessageServiceTest {
         testMessage.setStatus(Message.MessageStatus.SENT);
         when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
         when(messageRepository.save(any(Message.class))).thenReturn(testMessage);
+        when(conversationService.getConversation(1L, 1L)).thenReturn(testConversation);
 
         // Act
-        messageService.markMessageAsDelivered(1L, 2L);
+        messageService.markMessageAsDelivered(1L);
 
         // Assert
         verify(messageRepository, times(1)).save(any(Message.class));
@@ -193,16 +199,16 @@ class MessageServiceTest {
     }
 
     @Test
-    @DisplayName("Should not mark message as delivered if receiver mismatch")
-    void testMarkMessageAsDeliveredReceiverMismatch() {
+    @DisplayName("Should not mark message as delivered if already delivered")
+    void testMarkMessageAsDeliveredAlreadyDelivered() {
         // Arrange
-        testMessage.setStatus(Message.MessageStatus.SENT);
+        testMessage.setStatus(Message.MessageStatus.DELIVERED);
         when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
 
         // Act
-        messageService.markMessageAsDelivered(1L, 999L); // Wrong receiver ID
+        messageService.markMessageAsDelivered(1L);
 
-        // Assert
+        // Assert - should not save again or send notification
         verify(messageRepository, never()).save(any(Message.class));
         verify(messagingTemplate, never())
                 .convertAndSendToUser(anyString(), anyString(), any());
@@ -212,15 +218,30 @@ class MessageServiceTest {
     @DisplayName("Should handle empty message list when marking as read")
     void testMarkMessagesAsReadEmptyList() {
         // Arrange
-        when(messageRepository.findMessagesBetweenUsers(1L, 2L)).thenReturn(Arrays.asList());
-        when(chatRepository.findChatBetweenUsersAnyProject(1L, 2L))
-                .thenReturn(Optional.of(testChat));
+        when(messageRepository.findUnreadMessagesBySender(1L, 1L)).thenReturn(Arrays.asList());
+        doNothing().when(conversationService).markConversationAsRead(anyLong(), anyLong());
 
         // Act
-        messageService.markMessagesAsRead(1L, 2L);
+        messageService.markMessagesAsRead(1L, 1L, 2L);
 
         // Assert
         verify(messageRepository, never()).save(any(Message.class));
         verify(messagingTemplate, never()).convertAndSendToUser(anyString(), anyString(), any());
+        verify(conversationService, times(1)).markConversationAsRead(1L, 2L);
+    }
+
+    @Test
+    @DisplayName("Should throw exception when message not found for delivery")
+    void testMarkMessageAsDeliveredNotFound() {
+        // Arrange
+        when(messageRepository.findById(999L)).thenReturn(Optional.empty());
+
+        // Act & Assert
+        assertThrows(RuntimeException.class, () -> {
+            messageService.markMessageAsDelivered(999L);
+        });
+
+        verify(messageRepository, never()).save(any(Message.class));
     }
 }
+
