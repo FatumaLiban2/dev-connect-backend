@@ -2,8 +2,6 @@ package org.devconnect.devconnectbackend.model;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 
 @Entity
 @Table(name = "users")
@@ -14,7 +12,7 @@ public class User {
     private Long id;
     
     @Column(nullable = false, unique = true)
-    private String fullName;
+    private String username;
     
     @Column(nullable = false, unique = true)
     private String email;
@@ -38,17 +36,11 @@ public class User {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
     
-    @OneToMany(mappedBy = "sender", cascade = CascadeType.ALL)
-    private Set<Message> sentMessages = new HashSet<>();
-    
-    @OneToMany(mappedBy = "receiver", cascade = CascadeType.ALL)
-    private Set<Message> receivedMessages = new HashSet<>();
-    
     // Constructors
     public User() {}
     
-    public User(String fullName, String email, String password, UserRole role) {
-        this.fullName = fullName;
+    public User(String username, String email, String password, UserRole role) {
+        this.username = username;
         this.email = email;
         this.password = password;
         this.role = role;
@@ -65,11 +57,11 @@ public class User {
     }
     
     public String getUsername() {
-        return fullName;
+        return username;
     }
     
     public void setUsername(String username) {
-        this.fullName = fullName;
+        this.username = username;
     }
     
     public String getEmail() {
@@ -128,22 +120,6 @@ public class User {
         this.createdAt = createdAt;
     }
     
-    public Set<Message> getSentMessages() {
-        return sentMessages;
-    }
-    
-    public void setSentMessages(Set<Message> sentMessages) {
-        this.sentMessages = sentMessages;
-    }
-    
-    public Set<Message> getReceivedMessages() {
-        return receivedMessages;
-    }
-    
-    public void setReceivedMessages(Set<Message> receivedMessages) {
-        this.receivedMessages = receivedMessages;
-    }
-    
     public enum UserRole {
         CLIENT,
         DEVELOPER
@@ -154,3 +130,4 @@ public class User {
         OFFLINE
     }
 }
+

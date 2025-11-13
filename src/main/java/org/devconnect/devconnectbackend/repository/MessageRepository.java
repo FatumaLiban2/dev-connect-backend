@@ -1,6 +1,7 @@
 package org.devconnect.devconnectbackend.repository;
 
 import org.devconnect.devconnectbackend.model.Message;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,20 +12,35 @@ import java.util.List;
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Long> {
     
-    @Query("SELECT m FROM Message m WHERE " +
-           "(m.sender.id = :userId1 AND m.receiver.id = :userId2) OR " +
-           "(m.sender.id = :userId2 AND m.receiver.id = :userId1) " +
+    /**
+     * Find messages by conversation ID, ordered by timestamp ascending
+     */
+    @Query("SELECT m FROM Message m WHERE m.conversationId = :conversationId " +
            "ORDER BY m.timestamp ASC")
-    List<Message> findMessagesBetweenUsers(@Param("userId1") Long userId1, 
-                                           @Param("userId2") Long userId2);
+    List<Message> findByConversationIdOrderByTimestampAsc(@Param("conversationId") Long conversationId);
     
-    @Query("SELECT m FROM Message m WHERE " +
-           "m.receiver.id = :userId AND m.status != 'READ' " +
+    /**
+     * Find messages by conversation ID with pagination, ordered by timestamp descending (latest first)
+     */
+    @Query("SELECT m FROM Message m WHERE m.conversationId = :conversationId " +
            "ORDER BY m.timestamp DESC")
-    List<Message> findUnreadMessagesByReceiver(@Param("userId") Long userId);
+    List<Message> findByConversationIdOrderByTimestampDesc(@Param("conversationId") Long conversationId, Pageable pageable);
     
+    /**
+     * Count unread messages in a conversation for a specific receiver
+     */
     @Query("SELECT COUNT(m) FROM Message m WHERE " +
-           "m.receiver.id = :receiverId AND m.sender.id = :senderId AND m.status != 'READ'")
-    Integer countUnreadMessagesBetweenUsers(@Param("receiverId") Long receiverId, 
-                                           @Param("senderId") Long senderId);
+           "m.conversationId = :conversationId AND m.senderId = :senderId AND m.status != 'READ'")
+    Integer countUnreadMessages(@Param("conversationId") Long conversationId, 
+                                @Param("senderId") Long senderId);
+    
+    /**
+     * Find unread messages in a conversation sent by a specific sender
+     */
+    @Query("SELECT m FROM Message m WHERE " +
+           "m.conversationId = :conversationId AND m.senderId = :senderId AND m.status != 'READ' " +
+           "ORDER BY m.timestamp ASC")
+    List<Message> findUnreadMessagesBySender(@Param("conversationId") Long conversationId, 
+                                             @Param("senderId") Long senderId);
 }
+
