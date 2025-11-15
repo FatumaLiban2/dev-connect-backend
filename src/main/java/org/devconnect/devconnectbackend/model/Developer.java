@@ -1,6 +1,7 @@
 package org.devconnect.devconnectbackend.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -11,6 +12,7 @@ import java.math.BigDecimal;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@Table(name = "developers")
 public class Developer {
 
     @Id
@@ -23,7 +25,10 @@ public class Developer {
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
 
-    @Column(name = "bio", nullable = true, columnDefinition = "TEXT")
+    @Column(name="username", nullable = false, unique = true, length = 50)
+    private String username;
+
+    @Column(name = "bio", columnDefinition = "TEXT")
     private String bio;
 
     @Column(name = "skills", nullable = true, columnDefinition = "TEXT")
@@ -32,20 +37,20 @@ public class Developer {
     @Column(name = "hourly_rate", precision = 10, scale = 2)
     private BigDecimal hourlyRate;
 
+    @Pattern(regexp = "^https?://.*$", message = "Website must be a valid URL")
     @Column(name = "github_url", nullable = true, length = 500)
     private String githubUrl;
 
+    @Pattern(regexp = "^https?://.*$", message = "Website must be a valid URL")
     @Column(name = "linkedin_url", nullable = true, length = 500)
     private String linkedinUrl;
 
+    @Pattern(regexp = "^https?://.*$", message = "Website must be a valid URL")
     @Column(name = "portfolio_url", nullable = true, length = 500)
     private String portfolioUrl;
 
-    @Column(name = "avatar_url", nullable = true, length = 500)
-    private  String avatarUrl;
-
     @Column(name = "average_rating", precision = 3, scale = 2)
-    private BigDecimal averageRating;
+    private BigDecimal averageRating = BigDecimal.ZERO;
 
     @Column(name = "total_projects_completed")
     private Integer totalProjectsCompleted = 0;

@@ -1,133 +1,77 @@
 package org.devconnect.devconnectbackend.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.time.LocalDateTime;
 
 @Entity
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
 @Table(name = "users")
 public class User {
     
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "user_seq_gen")
+    @SequenceGenerator(name = "user_seq_gen", sequenceName = "user_seq", allocationSize = 1)
+    @Column(name = "user_id")
+    private Integer userId;
     
-    @Column(nullable = false, unique = true)
-    private String username;
-    
-    @Column(nullable = false, unique = true)
+    @Column(name = "first_name", nullable = false, length = 127)
+    private String firstName;
+
+    @Column(name = "last_name", nullable = false, length = 127)
+    private String lastName;
+
+    @Email
+    @Column(name = "email", nullable = false, unique = true, length = 255)
     private String email;
-    
-    @Column(nullable = false)
-    private String password;
+
+    @Column(name = "telephone", nullable = true, length = 15)
+    private String telephone;
+
+    @Column(name = "password_hash", nullable = false, length = 255)
+    private String passwordHash;
     
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private UserRole role;
-    
+    @Column(name = "user_role", nullable = false, length = 10)
+    private UserRole userRole;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "is_verified", nullable = false)
+    private boolean isVerified = false;
+
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private UserStatus status = UserStatus.OFFLINE;
-    
-    private String avatar;
-    
+    @Column(name="user_status", nullable = false)
+    private UserStatus userStatus = UserStatus.OFFLINE;
+
     @Column(name = "last_seen")
     private LocalDateTime lastSeen;
-    
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
-    
-    // Constructors
-    public User() {}
-    
-    public User(String username, String email, String password, UserRole role) {
-        this.username = username;
-        this.email = email;
-        this.password = password;
-        this.role = role;
-        this.createdAt = LocalDateTime.now();
-    }
-    
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
-    
-    public void setId(Long id) {
-        this.id = id;
-    }
-    
-    public String getUsername() {
-        return username;
-    }
-    
-    public void setUsername(String username) {
-        this.username = username;
-    }
-    
-    public String getEmail() {
-        return email;
-    }
-    
-    public void setEmail(String email) {
-        this.email = email;
-    }
-    
-    public String getPassword() {
-        return password;
-    }
-    
-    public void setPassword(String password) {
-        this.password = password;
-    }
-    
-    public UserRole getRole() {
-        return role;
-    }
-    
-    public void setRole(UserRole role) {
-        this.role = role;
-    }
-    
-    public UserStatus getStatus() {
-        return status;
-    }
-    
-    public void setStatus(UserStatus status) {
-        this.status = status;
-    }
-    
-    public String getAvatar() {
-        return avatar;
-    }
-    
-    public void setAvatar(String avatar) {
-        this.avatar = avatar;
-    }
-    
-    public LocalDateTime getLastSeen() {
-        return lastSeen;
-    }
-    
-    public void setLastSeen(LocalDateTime lastSeen) {
-        this.lastSeen = lastSeen;
-    }
-    
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-    
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-    
+
+    @Column(name = "is_active", nullable = false)
+    private boolean isActive = true;
+
     public enum UserRole {
         CLIENT,
-        DEVELOPER
+        DEVELOPER,
+        ADMIN
     }
-    
+
     public enum UserStatus {
         ONLINE,
         OFFLINE
     }
-}
 
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+    }
+}

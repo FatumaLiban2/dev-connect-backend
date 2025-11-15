@@ -1,151 +1,122 @@
 package org.devconnect.devconnectbackend.controller;
 
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-import org.devconnect.devconnectbackend.dto.UserDTO;
-import org.devconnect.devconnectbackend.dto.UserRegistrationDTO;
+import jakarta.validation.Valid;
+import org.devconnect.devconnectbackend.dto.*;
 import org.devconnect.devconnectbackend.model.User;
-import org.devconnect.devconnectbackend.repository.UserRepository;
+import org.devconnect.devconnectbackend.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
-    
+
     @Autowired
-    private UserRepository userRepository;
-    
-    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-    
-    /**
-     * Create a new user (temporary - for testing without auth)
-     * POST /api/users/register
-     */
+    private UserService userService;
+
+    // User Registration
     @PostMapping("/register")
-    public ResponseEntity<UserDTO> registerUser(@RequestBody UserRegistrationDTO registrationDTO) {
-        try {
-            // Check if user already exists
-            if (userRepository.existsByEmail(registrationDTO.getEmail())) {
-                return ResponseEntity.badRequest().build();
-            }
-            
-            if (userRepository.existsByUsername(registrationDTO.getUsername())) {
-                return ResponseEntity.badRequest().build();
-            }
-            
-            // Create user
-            User user = new User();
-            user.setUsername(registrationDTO.getUsername());
-            user.setEmail(registrationDTO.getEmail());
-            user.setPassword(passwordEncoder.encode(registrationDTO.getPassword()));
-            String role = registrationDTO.getRole();
-            if (role == null) {
-                return ResponseEntity.badRequest().build();
-            }
-            user.setRole(User.UserRole.valueOf(role.toUpperCase()));
-            user.setStatus(User.UserStatus.OFFLINE);
-            
-            user = userRepository.save(user);
-            
-            return ResponseEntity.ok(convertToDTO(user));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
+    public ResponseEntity<UserResponseDTO> register(@Valid @RequestBody UserRegistrationDTO userRegistrationDTO) {
+        UserResponseDTO createdUser = userService.registerUser(userRegistrationDTO);
+        return ResponseEntity.status(HttpStatus.CREATED).body(createdUser);
     }
-    
-    /**
-     * Simple login (temporary - returns user info without JWT)
-     * POST /api/users/login
-     */
+
+    // User Login
     @PostMapping("/login")
-    public ResponseEntity<UserDTO> login(@RequestBody Map<String, String> credentials) {
-        try {
-            String email = credentials.get("email");
-            String password = credentials.get("password");
-            
-            User user = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-            
-            // Check password
-            if (!passwordEncoder.matches(password, user.getPassword())) {
-                return ResponseEntity.status(401).build();
-            }
-            
-            return ResponseEntity.ok(convertToDTO(user));
-        } catch (Exception e) {
-            return ResponseEntity.status(401).build();
-        }
+    public ResponseEntity<LoginResponseDTO> login(@Valid @RequestBody LoginDTO loginDTO) {
+        LoginResponseDTO loginResponseDTO = userService.login(loginDTO);
+        return ResponseEntity.status(HttpStatus.OK).body(loginResponseDTO);
     }
-    
-    /**
-     * Get user by ID
-     * GET /api/users/{id}
-     */
-    @GetMapping("/{id}")
-    public ResponseEntity<UserDTO> getUserById(@PathVariable Long id) {
-        try {
-            User user = userRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-            return ResponseEntity.ok(convertToDTO(user));
-        } catch (Exception e) {
-            return ResponseEntity.notFound().build();
-        }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<LoginResponseDTO> refreshToken(@Valid @RequestBody RefreshTokenDTO refreshTokenDTO) {
+        LoginResponseDTO response = userService.refreshToken(refreshTokenDTO.getRefreshToken());
+        return ResponseEntity.status(HttpStatus.OK).body(response);
     }
-    
-    /**
-     * Get all users (for testing)
-     * GET /api/users
-     */
-    @GetMapping
-    public ResponseEntity<List<UserDTO>> getAllUsers() {
-        List<User> users = userRepository.findAll();
-        List<UserDTO> userDTOs = users.stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(userDTOs);
+
+    // Get User by Email
+    @GetMapping("/email/{email}")
+    public ResponseEntity<UserResponseDTO> getUserByEmail(@PathVariable String email) {
+        UserResponseDTO userResponseDTO = userService.getUserByEmail(email);
+        return  ResponseEntity.status(HttpStatus.OK).body(userResponseDTO);
     }
-    
-    /**
-     * Get users by role
-     * GET /api/users/role/{role}
-     */
+
+    // Get users by role
     @GetMapping("/role/{role}")
-    public ResponseEntity<List<UserDTO>> getUsersByRole(@PathVariable String role) {
-        try {
-            User.UserRole userRole = User.UserRole.valueOf(role.toUpperCase());
-            List<User> users = userRepository.findAll().stream()
-                    .filter(user -> user.getRole() == userRole)
-                    .collect(Collectors.toList());
-            
-            List<UserDTO> userDTOs = users.stream()
-                    .map(this::convertToDTO)
-                    .collect(Collectors.toList());
-            
-            return ResponseEntity.ok(userDTOs);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
+    public ResponseEntity<List<UserResponseDTO>> getUsersByRole(@PathVariable User.UserRole role) {
+        return ResponseEntity.ok(userService.getUsersByRole(role));
     }
-    
-    private UserDTO convertToDTO(User user) {
-    UserDTO dto = new UserDTO(
-        user.getId(),
-        user.getUsername(),
-        user.getEmail(),
-        user.getRole().name().toLowerCase(),
-        user.getStatus().name().toLowerCase(),
-        user.getAvatar()
-    );
-    return dto;
+
+    // Check if email exists
+    @GetMapping("/exists/{email}")
+    public ResponseEntity<Boolean> emailExists(@PathVariable String email) {
+        return ResponseEntity.ok(userService.isEmailExists(email));
+    }
+
+    // Get All Users
+    @GetMapping
+    public ResponseEntity<List<UserResponseDTO>> getUsers() {
+        List<UserResponseDTO> users = userService.getAllUsers();
+        return ResponseEntity.status(HttpStatus.OK).body(users);
+    }
+
+    // Get User by ID
+    @GetMapping("/{id}")
+    public ResponseEntity<UserResponseDTO> getUserById(@PathVariable Integer id) {
+        UserResponseDTO userResponseDTO = userService.getUserById(id);
+        return  ResponseEntity.status(HttpStatus.OK).body(userResponseDTO);
+    }
+
+    // Update User
+    @PutMapping("/{id}")
+    public ResponseEntity<UserResponseDTO> updateUser(@PathVariable Integer id, @Valid @RequestBody UserUpdateDTO userUpdateDTO) {
+        UserResponseDTO updatedUser = userService.updateUser(id, userUpdateDTO);
+        return ResponseEntity.status(HttpStatus.OK).body(updatedUser);
+    }
+
+    // Update user status
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<Void> updateUserStatus(@PathVariable Integer id, @RequestParam User.UserStatus status) {
+        userService.updateUserStatus(id, status);
+        return ResponseEntity.ok().build();
+    }
+
+    // Update last seen
+    @PatchMapping("/{id}/last-seen")
+    public ResponseEntity<Void> updateLastSeen(@PathVariable Integer id) {
+        userService.updateLastSeen(id);
+        return ResponseEntity.ok().build();
+    }
+
+    // Delete User
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(@PathVariable Integer id) {
+        userService.deleteUser(id);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
+    // Change password
+    @PostMapping("/{id}/change-password")
+    public ResponseEntity<Void> changePassword(@PathVariable Integer id, @Valid @RequestBody PasswordChangeDTO passwordChangeDTO) {
+        userService.changePassword(id, passwordChangeDTO);
+        return ResponseEntity.ok().build();
+    }
+
+    // Activate user
+    @PatchMapping("/{id}/activate")
+    public ResponseEntity<Void> activateUser(@PathVariable Integer id) {
+        userService.activateUserAccount(id);
+        return ResponseEntity.ok().build();
+    }
+
+    // Deactivate user
+    @PatchMapping("/{id}/deactivate")
+    public ResponseEntity<Void> deactivateUser(@PathVariable Integer id) {
+        userService.deactivateUserAccount(id);
+        return ResponseEntity.ok().build();
     }
 }

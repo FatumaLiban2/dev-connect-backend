@@ -2,6 +2,7 @@ package org.devconnect.devconnectbackend.model;
 
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,6 +11,7 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@Table(name = "clients")
 public class Client {
 
     @Id
@@ -22,21 +24,19 @@ public class Client {
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
 
+    @Column(name="username", nullable = false, unique = true, length = 50)
+    private String username;
+
+    @Column(columnDefinition = "TEXT")
+    private String bio;
+
     @Column(name = "company_name", length = 255)
     private String companyName;
 
     @Column(length = 127)
     private String industry;
 
-    @Column(columnDefinition = "TEXT")
-    private String address;
-
+    @Pattern(regexp = "^https?://.*$", message = "Website must be a valid URL")
     @Column(length = 255)
     private String website;
-
-    @Column(columnDefinition = "TEXT")
-    private String bio;
-
-    @Column(name = "avatar_url", length = 511)
-    private String avatarUrl;
 }
