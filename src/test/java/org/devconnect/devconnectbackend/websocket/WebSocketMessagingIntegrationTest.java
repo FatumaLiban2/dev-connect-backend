@@ -22,6 +22,7 @@ import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@SuppressWarnings("null")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DisplayName("WebSocket Messaging Integration Tests")
 class WebSocketMessagingIntegrationTest {
