@@ -21,8 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.test.context.support.WithMockUser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import static org.junit.jupiter.api.Assertions.*;
-
+@SuppressWarnings("null")
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional

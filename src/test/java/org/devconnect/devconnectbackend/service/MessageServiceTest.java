@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+@SuppressWarnings("null")
 @DisplayName("Message Service Tests")
 class MessageServiceTest {
 
@@ -91,7 +92,7 @@ class MessageServiceTest {
         when(userRepository.findById(1)).thenReturn(Optional.of(sender));
         when(userRepository.findById(2)).thenReturn(Optional.of(receiver));
         when(conversationService.getOrCreateConversation(1L, 2L)).thenReturn(testConversation);
-        when(messageRepository.save(any(Message.class))).thenReturn(testMessage);
+        when(messageRepository.save(any())).thenReturn(testMessage);
         doNothing().when(conversationService).updateConversationAfterMessage(anyLong(), anyLong(), anyString());
 
         // Act
@@ -108,10 +109,10 @@ class MessageServiceTest {
         verify(userRepository, times(1)).findById(1);
         verify(userRepository, times(1)).findById(2);
         verify(conversationService, times(1)).getOrCreateConversation(1L, 2L);
-        verify(messageRepository, times(1)).save(any(Message.class));
+        verify(messageRepository, times(1)).save(any());
         verify(conversationService, times(1)).updateConversationAfterMessage(eq(1L), eq(1L), eq("Hello Jane!"));
         verify(messagingTemplate, times(1))
-                .convertAndSendToUser(eq("2"), eq("/queue/messages"), any(MessageDTO.class));
+                .convertAndSendToUser(eq("2"), eq("/queue/messages"), any());
     }
 
     @Test
@@ -177,16 +178,16 @@ class MessageServiceTest {
         List<Message> messages = Arrays.asList(testMessage);
         
         when(messageRepository.findUnreadMessagesBySender(1L, 1L)).thenReturn(messages);
-        when(messageRepository.save(any(Message.class))).thenReturn(testMessage);
+        when(messageRepository.save(any())).thenReturn(testMessage);
         doNothing().when(conversationService).markConversationAsRead(anyLong(), anyLong());
 
         // Act
         messageService.markMessagesAsRead(1L, 1L, 2L);
 
         // Assert
-        verify(messageRepository, times(1)).save(any(Message.class));
+        verify(messageRepository, times(1)).save(any());
         verify(messagingTemplate, times(1))
-                .convertAndSendToUser(eq("1"), eq("/queue/read-receipts"), any(MessageDTO.class));
+                .convertAndSendToUser(eq("1"), eq("/queue/read-receipts"), any());
         verify(conversationService, times(1)).markConversationAsRead(1L, 2L);
     }
 
@@ -196,16 +197,16 @@ class MessageServiceTest {
         // Arrange
         testMessage.setStatus(Message.MessageStatus.SENT);
         when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
-        when(messageRepository.save(any(Message.class))).thenReturn(testMessage);
+        when(messageRepository.save(any())).thenReturn(testMessage);
         when(conversationService.getConversation(1L, 1L)).thenReturn(testConversation);
 
         // Act
         messageService.markMessageAsDelivered(1L);
 
         // Assert
-        verify(messageRepository, times(1)).save(any(Message.class));
+        verify(messageRepository, times(1)).save(any());
         verify(messagingTemplate, times(1))
-                .convertAndSendToUser(eq("1"), eq("/queue/delivery-receipts"), any(MessageDTO.class));
+                .convertAndSendToUser(eq("1"), eq("/queue/delivery-receipts"), any());
     }
 
     @Test
@@ -219,9 +220,9 @@ class MessageServiceTest {
         messageService.markMessageAsDelivered(1L);
 
         // Assert - should not save again or send notification
-        verify(messageRepository, never()).save(any(Message.class));
+        verify(messageRepository, never()).save(any());
         verify(messagingTemplate, never())
-                .convertAndSendToUser(anyString(), anyString(), any());
+                .convertAndSendToUser(any(), any(), any());
     }
 
     @Test
@@ -235,8 +236,8 @@ class MessageServiceTest {
         messageService.markMessagesAsRead(1L, 1L, 2L);
 
         // Assert
-        verify(messageRepository, never()).save(any(Message.class));
-        verify(messagingTemplate, never()).convertAndSendToUser(anyString(), anyString(), any());
+        verify(messageRepository, never()).save(any());
+        verify(messagingTemplate, never()).convertAndSendToUser(any(), any(), any());
         verify(conversationService, times(1)).markConversationAsRead(1L, 2L);
     }
 
@@ -251,7 +252,7 @@ class MessageServiceTest {
             messageService.markMessageAsDelivered(999L);
         });
 
-        verify(messageRepository, never()).save(any(Message.class));
+        verify(messageRepository, never()).save(any());
     }
 }
 
